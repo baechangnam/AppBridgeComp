@@ -85,7 +85,7 @@ function App() {
           </button>
           <nav id="site-nav" className={`site-nav${menuOpen ? ' is-open' : ''}`} aria-label="주요 메뉴">
             <a href="#services" onClick={() => setMenuOpen(false)}>
-              프로젝트
+              프로젝트1
             </a>
             <a href="#about" onClick={() => setMenuOpen(false)}>
               회사소개
