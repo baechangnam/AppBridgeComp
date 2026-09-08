@@ -20,7 +20,8 @@ function App() {
   const [activePortfolioFilter, setActivePortfolioFilter] = useState(portfolioFilters[0].id)
   const [activeProject, setActiveProject] = useState<PortfolioProject | null>(null)
   const [activeImage, setActiveImage] = useState('')
-  const [formNotice, setFormNotice] = useState('')
+  const [formNotice, setFormNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const filteredProjects = useMemo(
     () => portfolioProjects.filter((project) => project.category === activePortfolioFilter),
@@ -37,9 +38,52 @@ function App() {
     setActiveImage('')
   }
 
-  const submitContact = (event: FormEvent<HTMLFormElement>) => {
+  const submitContact = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setFormNotice('현재 정적 React 홈페이지라 문의 내용은 자동 전송되지 않습니다. 이메일 또는 전화로 직접 문의해주세요.')
+    const form = event.currentTarget
+    const formData = new FormData(form)
+    const privacy = formData.get('privacy') === 'on'
+
+    if (!privacy) {
+      setFormNotice({ type: 'error', message: '개인정보 처리방침 동의가 필요합니다.' })
+      return
+    }
+
+    setIsSubmitting(true)
+    setFormNotice(null)
+
+    try {
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.get('name'),
+          email: formData.get('email'),
+          projectType: formData.get('project_type'),
+          message: formData.get('message'),
+          privacy,
+          website: formData.get('website'),
+        }),
+      })
+
+      const result = (await response.json().catch(() => null)) as { message?: string } | null
+
+      if (!response.ok) {
+        throw new Error(result?.message ?? '문의 전송에 실패했습니다.')
+      }
+
+      form.reset()
+      setFormNotice({ type: 'success', message: result?.message ?? '문의가 접수되었습니다.' })
+    } catch (error) {
+      setFormNotice({
+        type: 'error',
+        message: error instanceof Error ? error.message : '문의 전송에 실패했습니다.',
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   useEffect(() => {
@@ -348,14 +392,17 @@ function App() {
                 프로젝트 상담은 언제든 환영합니다. <a href={`mailto:${companyInfo.email}`}>{companyInfo.email}</a>
               </p>
               <form className="contact-form" onSubmit={submitContact}>
-                {formNotice && <p className="form-notice is-error">{formNotice}</p>}
+                {formNotice && (
+                  <p className={`form-notice${formNotice.type === 'error' ? ' is-error' : ''}`}>{formNotice.message}</p>
+                )}
+                <input className="honeypot" type="text" name="website" tabIndex={-1} autoComplete="off" />
                 <label>
                   <span>이름</span>
-                  <input type="text" name="name" placeholder="Your name" />
+                  <input type="text" name="name" placeholder="Your name" required />
                 </label>
                 <label>
                   <span>이메일</span>
-                  <input type="email" name="email" placeholder="email@website.com" />
+                  <input type="email" name="email" placeholder="email@website.com" required />
                 </label>
                 <label>
                   <span>프로젝트 유형</span>
@@ -369,14 +416,14 @@ function App() {
                 </label>
                 <label>
                   <span>메시지</span>
-                  <textarea name="message" rows={5} placeholder="Type your message..." />
+                  <textarea name="message" rows={5} placeholder="Type your message..." required />
                 </label>
                 <label className="checkbox">
-                  <input type="checkbox" name="privacy" />
+                  <input type="checkbox" name="privacy" required />
                   <span>개인정보 처리방침 동의</span>
                 </label>
-                <button type="submit" className="button button-primary button-block">
-                  Submit
+                <button type="submit" className="button button-primary button-block" disabled={isSubmitting}>
+                  {isSubmitting ? '전송 중...' : '문의 보내기'}
                 </button>
               </form>
             </div>

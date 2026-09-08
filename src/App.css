@@ -969,6 +969,14 @@ img {
     padding: 28px;
 }
 
+.honeypot {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
 .form-notice {
     margin: 0 0 18px;
     padding: 14px 16px;
