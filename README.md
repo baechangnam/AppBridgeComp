@@ -46,3 +46,15 @@ Issues and PRs are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 [MIT](LICENSE)
+
+## Languages
+
+- The header provides a KO / EN switch. On the first visit, Korean browser locales use Korean; all other locales use English.
+- The selection is saved under `appbridge-language` in localStorage. If storage is blocked, switching still works for the current visit.
+- UI and metadata translations live in `src/i18n/index.ts`. English company and portfolio copy lives in `src/i18n/company.en.ts`, using the original content in `src/data/company.ts`.
+- Images and image paths are shared across languages. English reviews are translations of the original Korean reviews.
+- Contact requests include `language` and `Accept-Language`. The API returns a stable `code` alongside a localized `message`; requests without a language default to Korean. Project type values remain shared with the original API.
+- Deploy the updated `api/` separately to enable localized API responses. The existing GitHub Actions workflow deploys only the frontend.
+- Metadata changes in the browser; separate language URLs and server-rendered metadata are not provided.
+
+Run translation and API message checks with `pnpm test`.

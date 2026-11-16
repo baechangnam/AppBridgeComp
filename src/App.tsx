@@ -1,40 +1,36 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import {
-  companyInfo,
-  footerLinks,
-  metrics,
-  portfolioFilters,
-  portfolioProjects,
-  projectTypes,
-  serviceTabs,
-  testimonials,
-} from './data/company'
+import { companyContent, contactNoticeCode, copy, getInitialLanguage, languageStorageKey } from './i18n'
+import type { Language, NoticeCode } from './i18n'
 import './App.css'
 
-type PortfolioProject = (typeof portfolioProjects)[number]
+type PortfolioProject = (typeof companyContent.ko.portfolioProjects)[number]
 
 function App() {
+  const [language, setLanguage] = useState<Language>(getInitialLanguage)
+  const t = copy[language]
+  const { companyInfo, footerLinks, metrics, portfolioFilters, portfolioProjects, projectTypes, serviceTabs, testimonials } = companyContent[language]
   const [menuOpen, setMenuOpen] = useState(false)
   const [activeServiceTab, setActiveServiceTab] = useState(serviceTabs[0].id)
   const [activePortfolioFilter, setActivePortfolioFilter] = useState(portfolioFilters[0].id)
-  const [activeProject, setActiveProject] = useState<PortfolioProject | null>(null)
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
+  const activeProject = portfolioProjects.find((project) => project.id === activeProjectId) ?? null
   const [activeImage, setActiveImage] = useState('')
-  const [formNotice, setFormNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const [formNotice, setFormNotice] = useState<{ type: 'success' | 'error'; code: NoticeCode } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const filteredProjects = useMemo(
     () => portfolioProjects.filter((project) => project.category === activePortfolioFilter),
-    [activePortfolioFilter],
+    [activePortfolioFilter, portfolioProjects],
   )
 
   const openProject = (project: PortfolioProject) => {
-    setActiveProject(project)
+    setActiveProjectId(project.id)
     setActiveImage(project.gallery[0] ?? project.cover)
   }
 
   const closeProject = () => {
-    setActiveProject(null)
+    setActiveProjectId(null)
     setActiveImage('')
   }
 
@@ -45,7 +41,7 @@ function App() {
     const privacy = formData.get('privacy') === 'on'
 
     if (!privacy) {
-      setFormNotice({ type: 'error', message: '개인정보 처리방침 동의가 필요합니다.' })
+      setFormNotice({ type: 'error', code: 'privacy' })
       return
     }
 
@@ -57,8 +53,10 @@ function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept-Language': language,
         },
         body: JSON.stringify({
+          language,
           name: formData.get('name'),
           email: formData.get('email'),
           projectType: formData.get('project_type'),
@@ -68,23 +66,43 @@ function App() {
         }),
       })
 
-      const result = (await response.json().catch(() => null)) as { message?: string } | null
+      const result = (await response.json().catch(() => null)) as { code?: string } | null
 
       if (!response.ok) {
-        throw new Error(result?.message ?? '문의 전송에 실패했습니다.')
+        setFormNotice({ type: 'error', code: contactNoticeCode(response.status, result?.code) })
+        return
       }
 
       form.reset()
-      setFormNotice({ type: 'success', message: result?.message ?? '문의가 접수되었습니다.' })
-    } catch (error) {
+      setFormNotice({ type: 'success', code: 'success' })
+    } catch {
       setFormNotice({
         type: 'error',
-        message: error instanceof Error ? error.message : '문의 전송에 실패했습니다.',
+        code: 'failed',
       })
     } finally {
       setIsSubmitting(false)
     }
   }
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(languageStorageKey, language)
+    } catch {
+      // Storage may be disabled; retain the current selection in memory.
+    }
+    document.documentElement.lang = language
+    document.title = t.meta.title
+    const metadata = {
+      'meta[name="description"]': t.meta.description,
+      'meta[name="keywords"]': t.meta.keywords,
+      'meta[property="og:title"]': t.meta.ogTitle,
+      'meta[property="og:description"]': t.meta.ogDescription,
+    }
+    Object.entries(metadata).forEach(([selector, content]) => {
+      document.querySelector(selector)?.setAttribute('content', content)
+    })
+  }, [language, t])
 
   useEffect(() => {
     document.body.style.overflow = activeProject ? 'hidden' : ''
@@ -109,43 +127,57 @@ function App() {
     <>
       <header className="site-header">
         <div className="container nav-shell">
-          <a className="brand" href="#top" aria-label="App Bridge 홈" onClick={() => setMenuOpen(false)}>
+          <a className="brand" href="#top" aria-label={t.home} onClick={() => setMenuOpen(false)}>
             <span className="brand-mark" aria-hidden="true">
               <img src="/web/ab_logo.png" alt="" />
             </span>
             <span className="brand-text">App Bridge</span>
           </a>
+          <div className="language-switch" role="group" aria-label={t.language}>
+            {(['ko', 'en'] as const).map((locale) => (
+              <button
+                key={locale}
+                type="button"
+                lang={locale}
+                aria-label={locale === 'ko' ? '한국어' : 'English'}
+                aria-pressed={language === locale}
+                onClick={() => setLanguage(locale)}
+              >
+                {locale.toUpperCase()}
+              </button>
+            ))}
+          </div>
           <button
             className="nav-toggle"
             type="button"
             aria-expanded={menuOpen}
             aria-controls="site-nav"
-            aria-label="메뉴 열기"
+            aria-label={menuOpen ? t.closeMenu : t.openMenu}
             onClick={() => setMenuOpen((open) => !open)}
           >
             <span></span>
             <span></span>
             <span></span>
           </button>
-          <nav id="site-nav" className={`site-nav${menuOpen ? ' is-open' : ''}`} aria-label="주요 메뉴">
+          <nav id="site-nav" className={`site-nav${menuOpen ? ' is-open' : ''}`} aria-label={t.navigation}>
             <a href="#services" onClick={() => setMenuOpen(false)}>
-              프로젝트
+              {t.projects}
             </a>
             <a href="#about" onClick={() => setMenuOpen(false)}>
-              회사소개
+              {t.about}
             </a>
             <a href="#portfolio" onClick={() => setMenuOpen(false)}>
-              구축 사례
+              {t.portfolio}
             </a>
             <a href="#reviews" onClick={() => setMenuOpen(false)}>
-              후기
+              {t.reviews}
             </a>
             <a href="#contact" onClick={() => setMenuOpen(false)}>
-              고객지원
+              {t.support}
             </a>
           </nav>
           <a className="button button-primary nav-cta" href="#contact">
-            상담신청
+            {t.consultation}
           </a>
         </div>
       </header>
@@ -155,34 +187,34 @@ function App() {
           <div className="container hero-grid">
             <div className="hero-copy">
               <p className="eyebrow">APP BUILDING STUDIO</p>
-              <h1>앱 개발부터 운영까지 한번에</h1>
+              <h1>{t.heroTitle}</h1>
               <p className="hero-description">
-                15년 이상의 실무 경험으로
+                {t.heroIntro}
                 <br />
-                실제 운영 가능한 서비스를 구축합니다.
+                {t.heroDescription}
               </p>
               <ul className="hero-points">
                 <li>Android / iOS / Flutter / React</li>
-                <li>관리자 시스템 + 서버 구축</li>
-                <li>300건 이상의 앱 스토어 배포 및 운영 경험</li>
-                <li>AI/LLM 기반 서비스 개발</li>
+                <li>{t.heroSystems}</li>
+                <li>{t.heroExperience}</li>
+                <li>{t.heroAI}</li>
               </ul>
               <div className="hero-actions">
                 <a className="button button-primary" href="#contact">
-                  문의하기
+                  {t.contactUs}
                 </a>
                 <a className="button button-secondary" href="#services">
-                  서비스 안내
+                  {t.services}
                 </a>
               </div>
             </div>
             <div className="hero-visual">
               <div className="hero-badge">
                 <p>Product Strategy</p>
-                <strong>기획부터 배포까지</strong>
+                <strong>{t.delivery}</strong>
               </div>
               <figure className="hero-image-shell">
-                <img className="hero-image" src="/web/main.avif" alt="기획부터 배포까지 함께하는 App Bridge 개발팀" />
+                <img className="hero-image" src="/web/main.avif" alt={t.heroAlt} />
               </figure>
             </div>
           </div>
@@ -191,11 +223,11 @@ function App() {
         <section id="services" className="features section-light">
           <div className="container">
             <div className="section-heading centered">
-              <p className="section-kicker">서비스 프로젝트</p>
-              <h2>핵심 프로젝트</h2>
+              <p className="section-kicker">{t.servicesKicker}</p>
+              <h2>{t.servicesTitle}</h2>
             </div>
 
-            <div className="feature-tabs" role="tablist" aria-label="서비스 프로젝트 카테고리">
+            <div className="feature-tabs" role="tablist" aria-label={t.serviceCategories}>
               {serviceTabs.map((tab) => (
                 <button
                   key={tab.id}
@@ -257,8 +289,8 @@ function App() {
         <section id="about" className="results">
           <div className="container">
             <div className="section-heading centered">
-              <p className="section-kicker">성과 지표</p>
-              <h2>성과로 증명하는 개발 파트너</h2>
+              <p className="section-kicker">{t.metricsKicker}</p>
+              <h2>{t.metricsTitle}</h2>
             </div>
             <div className="metric-grid">
               {metrics.map((metric) => (
@@ -274,11 +306,11 @@ function App() {
         <section id="portfolio" className="portfolio section-light">
           <div className="container">
             <div className="section-heading centered">
-              <p className="section-kicker">포트폴리오</p>
-              <h2>구축 사례</h2>
+              <p className="section-kicker">{t.portfolioKicker}</p>
+              <h2>{t.portfolio}</h2>
             </div>
 
-            <div className="portfolio-filters" role="tablist" aria-label="포트폴리오 카테고리">
+            <div className="portfolio-filters" role="tablist" aria-label={t.portfolioCategories}>
               {portfolioFilters.map((filter) => (
                 <button
                   key={filter.id}
@@ -313,9 +345,9 @@ function App() {
 
         {activeProject && (
           <div className="portfolio-modal">
-            <button className="portfolio-modal-backdrop" type="button" aria-label="닫기" onClick={closeProject}></button>
+            <button className="portfolio-modal-backdrop" type="button" aria-label={t.close} onClick={closeProject}></button>
             <div className="portfolio-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="portfolio-modal-title">
-              <button className="portfolio-modal-close" type="button" aria-label="닫기" onClick={closeProject}>
+              <button className="portfolio-modal-close" type="button" aria-label={t.close} onClick={closeProject}>
                 ×
               </button>
               <div className="portfolio-modal-body">
@@ -324,7 +356,7 @@ function App() {
                   <div className="portfolio-mobile-gallery">
                     {activeProject.gallery.map((image, index) => (
                       <figure className="portfolio-mobile-shot" key={image}>
-                        <img src={image} alt={`${activeProject.title} 상세 화면 ${index + 1}`} />
+                        <img src={image} alt={`${activeProject.title} ${t.detailScreen} ${index + 1}`} />
                       </figure>
                     ))}
                   </div>
@@ -341,7 +373,7 @@ function App() {
                         key={image}
                         onClick={() => setActiveImage(image)}
                       >
-                        <img src={image} alt={`${activeProject.title} 상세 화면 ${index + 1}`} />
+                        <img src={image} alt={`${activeProject.title} ${t.detailScreen} ${index + 1}`} />
                       </button>
                     ))}
                   </div>
@@ -354,8 +386,9 @@ function App() {
         <section id="reviews" className="reviews section-light">
           <div className="container">
             <div className="section-heading centered">
-              <p className="section-kicker">고객 후기</p>
-              <h2>실제 고객이 남긴 후기</h2>
+              <p className="section-kicker">{t.reviewsKicker}</p>
+              <h2>{t.reviewsTitle}</h2>
+              {t.reviewsNote && <p>{t.reviewsNote}</p>}
             </div>
             <div className="review-list">
               {testimonials.map((testimonial) => (
@@ -385,45 +418,45 @@ function App() {
           <div className="container contact-grid contact-grid-single">
             <div className="contact-copy">
               <div className="section-heading centered contact-heading">
-                <p className="section-kicker">프로젝트 문의</p>
-                <h2>프로젝트 상담</h2>
+                <p className="section-kicker">{t.contactKicker}</p>
+                <h2>{t.contactTitle}</h2>
               </div>
               <p>
-                프로젝트 상담은 언제든 환영합니다. <a href={`mailto:${companyInfo.email}`}>{companyInfo.email}</a>
+                {t.contactIntro} <a href={`mailto:${companyInfo.email}`}>{companyInfo.email}</a>
               </p>
               <form className="contact-form" onSubmit={submitContact}>
                 {formNotice && (
-                  <p className={`form-notice${formNotice.type === 'error' ? ' is-error' : ''}`}>{formNotice.message}</p>
+                  <p role="status" className={`form-notice${formNotice.type === 'error' ? ' is-error' : ''}`}>{t.notices[formNotice.code]}</p>
                 )}
                 <input className="honeypot" type="text" name="website" tabIndex={-1} autoComplete="off" />
                 <label>
-                  <span>이름</span>
-                  <input type="text" name="name" placeholder="Your name" required />
+                  <span>{t.name}</span>
+                  <input type="text" name="name" placeholder={t.namePlaceholder} required />
                 </label>
                 <label>
-                  <span>이메일</span>
+                  <span>{t.email}</span>
                   <input type="email" name="email" placeholder="email@website.com" required />
                 </label>
                 <label>
-                  <span>프로젝트 유형</span>
-                  <select name="project_type" defaultValue={projectTypes[0]}>
-                    {projectTypes.map((type) => (
-                      <option value={type} key={type}>
+                  <span>{t.projectType}</span>
+                  <select name="project_type" defaultValue={companyContent.ko.projectTypes[0]}>
+                    {projectTypes.map((type, index) => (
+                      <option value={companyContent.ko.projectTypes[index]} key={companyContent.ko.projectTypes[index]}>
                         {type}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label>
-                  <span>메시지</span>
-                  <textarea name="message" rows={5} placeholder="Type your message..." required />
+                  <span>{t.message}</span>
+                  <textarea name="message" rows={5} placeholder={t.messagePlaceholder} required />
                 </label>
                 <label className="checkbox">
                   <input type="checkbox" name="privacy" required />
-                  <span>개인정보 처리방침 동의</span>
+                  <span>{t.privacy}</span>
                 </label>
                 <button type="submit" className="button button-primary button-block" disabled={isSubmitting}>
-                  {isSubmitting ? '전송 중...' : '문의 보내기'}
+                  {isSubmitting ? t.sending : t.send}
                 </button>
               </form>
             </div>
@@ -450,16 +483,16 @@ function App() {
         </div>
         <div className="container footer-meta">
           <p>
-            <strong>회사명:</strong> {companyInfo.name}
+            <strong>{t.company}:</strong> {companyInfo.name}
           </p>
           <p>
-            <strong>사업자번호:</strong> {companyInfo.businessNumber}
+            <strong>{t.businessNumber}:</strong> {companyInfo.businessNumber}
           </p>
           <p>
-            <strong>연락처:</strong> <a href={`tel:${companyInfo.phone.replaceAll('-', '')}`}>{companyInfo.phone}</a>
+            <strong>{t.phone}:</strong> <a href={`tel:${companyInfo.phone.replaceAll('-', '')}`}>{companyInfo.phone}</a>
           </p>
           <p>
-            <strong>이메일:</strong> <a href={`mailto:${companyInfo.email}`}>{companyInfo.email}</a>
+            <strong>{t.email}:</strong> <a href={`mailto:${companyInfo.email}`}>{companyInfo.email}</a>
           </p>
         </div>
       </footer>

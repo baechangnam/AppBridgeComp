@@ -4,12 +4,14 @@ import express from 'express'
 import rateLimit from 'express-rate-limit'
 import nodemailer from 'nodemailer'
 import { z } from 'zod'
+import { contactMessage } from './messages.js'
 
 const app = express()
 const port = Number(process.env.PORT ?? 4000)
 const allowedOrigin = process.env.ALLOWED_ORIGIN ?? 'http://127.0.0.1:5173'
 
 const contactSchema = z.object({
+  language: z.enum(['ko', 'en']).optional(),
   name: z.string().trim().min(1).max(80),
   email: z.string().trim().email().max(160),
   projectType: z.string().trim().min(1).max(80),
@@ -37,6 +39,9 @@ app.use(
     limit: 5,
     standardHeaders: true,
     legacyHeaders: false,
+    handler: (request, response) => {
+      response.status(429).json(contactMessage(request, 'RATE_LIMITED'))
+    },
   }),
 )
 
@@ -44,13 +49,13 @@ const contactHandler = async (request, response) => {
   const parsed = contactSchema.safeParse(request.body)
 
   if (!parsed.success) {
-    return response.status(400).json({ message: '입력값을 다시 확인해주세요.' })
+    return response.status(400).json(contactMessage(request, 'INVALID_INPUT'))
   }
 
   const { name, email, projectType, message, privacy, website } = parsed.data
 
   if (!privacy) {
-    return response.status(400).json({ message: '개인정보 처리방침 동의가 필요합니다.' })
+    return response.status(400).json(contactMessage(request, 'PRIVACY_REQUIRED'))
   }
 
   if (website) {
@@ -58,7 +63,7 @@ const contactHandler = async (request, response) => {
   }
 
   if (!process.env.MAIL_TO || !process.env.MAIL_FROM) {
-    return response.status(500).json({ message: '메일 서버 설정이 완료되지 않았습니다.' })
+    return response.status(500).json(contactMessage(request, 'MAIL_NOT_CONFIGURED'))
   }
 
   await transporter.sendMail({
@@ -77,7 +82,7 @@ const contactHandler = async (request, response) => {
     ].join('\n'),
   })
 
-  return response.json({ message: '문의가 접수되었습니다.' })
+  return response.json(contactMessage(request, 'CONTACT_SENT'))
 }
 
 app.get('/health', (_request, response) => {
@@ -87,9 +92,10 @@ app.get('/health', (_request, response) => {
 app.post('/contact', contactHandler)
 app.post('/api/contact', contactHandler)
 
-app.use((error, _request, response, _next) => {
+app.use((error, request, response, _next) => {
   console.error(error)
-  response.status(500).json({ message: '메일 발송 중 오류가 발생했습니다.' })
+  const status = error.status === 400 || error.status === 413 ? error.status : 500
+  response.status(status).json(contactMessage(request, status === 500 ? 'SEND_FAILED' : 'INVALID_INPUT'))
 })
 
 app.listen(port, () => {
